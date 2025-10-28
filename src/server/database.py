@@ -95,7 +95,9 @@ def init_database() -> None:
         logger.warning(f"引导管理员失败（可忽略开发环境）：{e}")
 
     try:
-        from src.server.rss.service import ensure_default_source  # 延迟导入避免循环
+        from src.server.rss.service.source_service import (
+            ensure_default_source,
+        )  # 延迟导入避免循环
 
         session = SessionLocal()
         try:

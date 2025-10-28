@@ -48,8 +48,12 @@ class RSSSource(Base):
     language: Mapped[Optional[str]] = mapped_column(String(32), default=None)
     category: Mapped[Optional[str]] = mapped_column(String(64), default=None)
     is_active: Mapped[bool] = mapped_column(Integer, nullable=False, default=1)
-    sync_interval_minutes: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
-    last_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None)
+    sync_interval_minutes: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=60
+    )
+    last_synced_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -93,7 +97,9 @@ class RSSEntry(Base):
     content: Mapped[Optional[str]] = mapped_column(Text, default=None)
     link: Mapped[Optional[str]] = mapped_column(String(512), default=None)
     author: Mapped[Optional[str]] = mapped_column(String(128), default=None)
-    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None)
+    published_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     fetched_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -119,7 +125,9 @@ class FetchLog(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
-    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=None)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
     error_message: Mapped[Optional[str]] = mapped_column(Text, default=None)
     entries_fetched: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

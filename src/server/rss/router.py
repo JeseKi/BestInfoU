@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from src.server.database import get_db
-from . import service
+from .service import list_sources, get_feed_snapshot, refresh_source
 from .schemas import RSSFeedResponse, RSSSourceSchema, SourceRefreshResponse
 
 router = APIRouter(prefix="/api/rss", tags=["RSS"])
@@ -34,7 +34,7 @@ router = APIRouter(prefix="/api/rss", tags=["RSS"])
 )
 def list_sources_api(db: Session = Depends(get_db)) -> list[RSSSourceSchema]:
     """列出所有订阅源。"""
-    return service.list_sources(db)
+    return list_sources(db)
 
 
 @router.get(
@@ -48,7 +48,7 @@ def get_feeds_api(
     db: Session = Depends(get_db),
 ) -> RSSFeedResponse:
     """返回订阅源与最新条目的组合。"""
-    return service.get_feed_snapshot(db, limit)
+    return get_feed_snapshot(db, limit)
 
 
 @router.post(
@@ -62,4 +62,4 @@ def refresh_source_api(
     db: Session = Depends(get_db),
 ) -> SourceRefreshResponse:
     """手动触发订阅源抓取。"""
-    return service.refresh_source(db, source_id)
+    return refresh_source(db, source_id)
