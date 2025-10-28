@@ -48,9 +48,6 @@ class RSSSource(Base):
     language: Mapped[Optional[str]] = mapped_column(String(32), default=None)
     category: Mapped[Optional[str]] = mapped_column(String(64), default=None)
     is_active: Mapped[bool] = mapped_column(Integer, nullable=False, default=1)
-    sync_interval_minutes: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=60
-    )
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), default=None
     )

@@ -65,7 +65,6 @@ class RSSSourceDAO(BaseDAO):
         language: str | None = None,
         category: str | None = None,
         is_active: bool = True,
-        sync_interval_minutes: int = 60,
     ) -> RSSSource:
         source = RSSSource(
             name=name,
@@ -76,7 +75,6 @@ class RSSSourceDAO(BaseDAO):
             language=language,
             category=category,
             is_active=_normalize_is_active(is_active),
-            sync_interval_minutes=sync_interval_minutes,
         )
         self.db_session.add(source)
         self.db_session.commit()

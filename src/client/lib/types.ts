@@ -58,7 +58,6 @@ export interface RSSSource {
   language: string | null
   category: string | null
   is_active: boolean
-  sync_interval_minutes: number
   last_synced_at: string | null
 }
 

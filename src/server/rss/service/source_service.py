@@ -58,7 +58,6 @@ def ensure_default_source(db: Session) -> RSSSource:
         category="technology",
         language="zh-CN",
         is_active=True,
-        sync_interval_minutes=rss_config.rss_default_sync_interval_minutes,
     )
     _ensure_source_avatar(db, source)
     if not source.feed_avatar and DEFAULT_SOURCE_AVATAR:

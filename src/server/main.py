@@ -13,16 +13,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
+from sqlalchemy.orm import sessionmaker
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import Scope
 
 from src.server.config import global_config
-from src.server.database import get_database_info, init_database
+from src.server.database import get_database_info, init_database, engine
 
 # 路由模块
 from src.server.auth.router import router as auth_router
 from src.server.example_module.router import router as example_router
 from src.server.rss.router import router as rss_router
+from src.server.rss.scheduler import start_rss_scheduler, stop_rss_scheduler
 
 # --- 配置与常量 ---
 PROJECT_ROOT = Path(global_config.project_root)
@@ -36,7 +38,7 @@ ASSETS_DIRNAME = "assets"  # Vite 默认的 hash 产物目录
 async def lifespan(_: FastAPI):
     """
     应用生命周期管理：
-    - 启动时检查并按需初始化数据库。
+    - 启动时检查并按需初始化数据库，同时启动RSS调度器。
     """
     logger.info("应用启动中...")
     db_info = get_database_info()
@@ -47,9 +49,17 @@ async def lifespan(_: FastAPI):
     else:
         logger.info(f"数据库已存在，大小: {db_info.database_size} 字节。")
 
-    logger.success("应用启动完成。")
-    yield
-    logger.info("应用已关闭。")
+    # 创建数据库会话并启动 RSS 调度器
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    db = SessionLocal()
+    try:
+        await start_rss_scheduler(db)
+        logger.success("应用启动完成。")
+        yield
+    finally:
+        await stop_rss_scheduler()
+        logger.info("应用已关闭。")
+        db.close()
 
 
 # --- 应用实例与中间件 ---

@@ -52,10 +52,17 @@ class RSSConfig(BaseSettings):
         description="获取 RSS 条目时的默认数量限制",
     )
 
-    rss_default_sync_interval_minutes: int = Field(
-        default=60,
-        title="默认同步间隔",
-        description="RSS 源同步更新的默认间隔（分钟）",
+    # 自动同步配置
+    rss_sync_interval_minutes: int = Field(
+        default=10,
+        title="RSS 同步间隔",
+        description="RSS 源自动同步更新的全局间隔（分钟）",
+    )
+
+    rss_max_concurrent_fetches: int = Field(
+        default=5,
+        title="最大并发拉取数",
+        description="同时执行的最大 RSS 拉取任务数",
     )
 
 

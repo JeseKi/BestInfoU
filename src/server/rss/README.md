@@ -12,13 +12,15 @@
 2. 刷新接口通过线程池执行同步 HTTP 抓取与 feedparser 解析，解析成功后写入 `rss_entries` 并生成抓取日志。
 3. 在首次创建或刷新时，服务会抓取订阅源主页的 favicon / og:image 自动补齐头像地址，便于前端展示来源识别。
 4. 列表接口从最新条目中组装「订阅源 + 条目」快照供前端展示，默认每次返回 50 条。
+5. 启动时自动启动 RSS 同步调度器，根据全局配置的时间间隔自动拉取过期的 RSS 源。
 
 ## 数据流
 1. 前端调用 `/api/rss/feeds`。
 2. 路由转发到 `service.get_feed_snapshot`，读取订阅源与条目。
 3. 数据访问层通过 `RSSSourceDAO`、`RSSEntryDAO` 查询 SQLite。
 4. 若用户点击刷新，则 `/api/rss/sources/{id}/refresh` 调用 `service.refresh_source`，抓取 RSS 文本、解析并写回数据库，同时写入 `FetchLog`。
-5. 服务返回 Pydantic 序列化后的结果。
+5. 后台调度器定期检查各个源的 `last_synced_at` 时间戳，若超过配置的全局同步间隔，则自动触发拉取。
+6. 服务返回 Pydantic 序列化后的结果。
 
 ## 用法示例
 ```python

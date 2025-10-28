@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class RSSSourceSchema(BaseModel):
@@ -36,7 +36,6 @@ class RSSSourceSchema(BaseModel):
     language: Optional[str] = None
     category: Optional[str] = None
     is_active: bool = True
-    sync_interval_minutes: int = Field(default=60, ge=1)
     last_synced_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
