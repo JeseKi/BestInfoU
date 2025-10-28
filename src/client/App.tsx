@@ -3,7 +3,7 @@ import MainLayout from './components/layout/MainLayout'
 import ExamplePage from './pages/dashboard/ExamplePage'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
-import { AuthProvider, RequireAuth } from './providers/AuthProvider'
+import { AuthProvider /* , RequireAuth */ } from './providers/AuthProvider'
 
 export default function App() {
   return (
@@ -14,11 +14,12 @@ export default function App() {
           <Route path="/register" element={<RegisterPage />} />
           <Route
             path="/"
-            element={
-              <RequireAuth>
+            element={(
+              <>
+                {/* 登录暂时关闭，后续若恢复可重新包裹 RequireAuth */}
                 <MainLayout />
-              </RequireAuth>
-            }
+              </>
+            )}
           >
             <Route index element={<ExamplePage />} />
           </Route>

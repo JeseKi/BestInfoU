@@ -73,6 +73,7 @@ def init_database() -> None:
     try:
         from src.server.auth import models as _1  # noqa
         from src.server.example_module import models as _2  # noqa
+        from src.server.rss import models as _3  # noqa
     except Exception as e:
         logger.warning(f"导入模型时出现警告：{e}")
 
@@ -93,11 +94,23 @@ def init_database() -> None:
     except Exception as e:
         logger.warning(f"引导管理员失败（可忽略开发环境）：{e}")
 
+    try:
+        from src.server.rss.service import ensure_default_source  # 延迟导入避免循环
+
+        session = SessionLocal()
+        try:
+            ensure_default_source(session)
+        finally:
+            session.close()
+    except Exception as e:
+        logger.warning(f"引导默认订阅源失败（可忽略开发环境）：{e}")
+
 
 def import_all_models() -> None:
     """导入所有模型。"""
     from src.server.auth import models as _1  # noqa
     from src.server.example_module import models as _2  # noqa
+    from src.server.rss import models as _3  # noqa
 
 
 def get_database_info() -> DatabaseInfo:

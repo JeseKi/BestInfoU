@@ -44,6 +44,8 @@ def test_db_engine() -> Iterator[Connection]:
 
     from src.server.database import Base
     import src.server.auth.models  # noqa: F401
+    import src.server.example_module.models  # noqa: F401
+    import src.server.rss.models  # noqa: F401
 
     Base.metadata.create_all(bind=keep_conn)
 

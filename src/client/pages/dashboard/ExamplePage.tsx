@@ -2,26 +2,24 @@ import { isAxiosError } from 'axios'
 import {
   Alert,
   App,
+  Avatar,
   Button,
   Card,
-  Descriptions,
+  Empty,
   Flex,
-  Form,
-  Input,
-  InputNumber,
-  Result,
+  List,
+  Select,
   Space,
-  Statistic,
+  Spin,
+  Tag,
   Typography,
 } from 'antd'
-import {
-  ThunderboltOutlined,
-  PlusCircleOutlined,
-  SearchOutlined,
-} from '@ant-design/icons'
-import { useMemo, useState } from 'react'
-import * as exampleApi from '../../lib/example'
-import type { Item } from '../../lib/types'
+import { ReloadOutlined } from '@ant-design/icons'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import * as rssApi from '../../lib/rss'
+import type { RSSEntry, RSSSource } from '../../lib/types'
+
+type SourceFilterValue = number | 'all'
 
 function resolveErrorMessage(error: unknown): string {
   if (isAxiosError(error)) {
@@ -34,230 +32,201 @@ function resolveErrorMessage(error: unknown): string {
   return '请求失败，请稍后再试。'
 }
 
-export default function ExamplePage() {
+function formatDateTime(value: string | null): string {
+  if (!value) {
+    return '发布时间未知'
+  }
+  try {
+    return new Date(value).toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch (error) {
+    console.error('时间格式化失败', error)
+    return value
+  }
+}
+
+export default function FeedPage() {
   const { message } = App.useApp()
 
-  const [pingLoading, setPingLoading] = useState(false)
-  const [pingError, setPingError] = useState<string | null>(null)
-  const [pingResult, setPingResult] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [refreshLoading, setRefreshLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const [createForm] = Form.useForm<{ name: string }>()
-  const [createLoading, setCreateLoading] = useState(false)
-  const [createError, setCreateError] = useState<string | null>(null)
-  const [createdItem, setCreatedItem] = useState<Item | null>(null)
+  const [sources, setSources] = useState<RSSSource[]>([])
+  const [entries, setEntries] = useState<RSSEntry[]>([])
+  const [selectedSourceId, setSelectedSourceId] = useState<SourceFilterValue>('all')
 
-  const [fetchForm] = Form.useForm<{ id: number }>()
-  const [fetchLoading, setFetchLoading] = useState(false)
-  const [fetchError, setFetchError] = useState<string | null>(null)
-  const [fetchedItem, setFetchedItem] = useState<Item | null>(null)
-
-  const handlePing = async () => {
-    setPingLoading(true)
-    setPingError(null)
+  const loadFeed = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const result = await exampleApi.ping()
-      setPingResult(result)
-      message.success('服务正常响应')
-    } catch (error) {
-      const text = resolveErrorMessage(error)
-      setPingError(text)
-      setPingResult(null)
+      const data = await rssApi.fetchFeedSnapshot(50)
+      const nextSources = Array.isArray(data.sources) ? data.sources : []
+      const nextEntries = Array.isArray(data.entries) ? data.entries : []
+      setSources(nextSources)
+      setEntries(nextEntries)
+      setSelectedSourceId((prev) => {
+        if (nextSources.length === 0) {
+          return 'all'
+        }
+        if (prev === 'all') {
+          return nextSources[0].id
+        }
+        const exists = nextSources.some((source) => source.id === prev)
+        return exists ? prev : nextSources[0].id
+      })
+    } catch (err) {
+      const text = resolveErrorMessage(err)
+      setError(text)
       message.error(text)
     } finally {
-      setPingLoading(false)
+      setLoading(false)
     }
-  }
+  }, [message])
 
-  const handleCreateItem = async ({ name }: { name: string }) => {
-    const trimmed = name.trim()
-    if (!trimmed) {
-      setCreateError('名称不能为空')
+  useEffect(() => {
+    void loadFeed()
+  }, [loadFeed])
+
+  const handleRefresh = async () => {
+    if (selectedSourceId === 'all') {
+      message.info('请选择具体的订阅源后再刷新。')
       return
     }
-    setCreateLoading(true)
-    setCreateError(null)
+    setRefreshLoading(true)
     try {
-      const item = await exampleApi.createItem({ name: trimmed })
-      setCreatedItem(item)
-      message.success('示例条目创建成功')
-      createForm.resetFields()
-    } catch (error) {
-      const text = resolveErrorMessage(error)
-      setCreateError(text)
-      setCreatedItem(null)
+      await rssApi.refreshSource(selectedSourceId)
+      message.success('刷新成功，正在更新列表')
+      await loadFeed()
+    } catch (err) {
+      const text = resolveErrorMessage(err)
       message.error(text)
     } finally {
-      setCreateLoading(false)
+      setRefreshLoading(false)
     }
   }
 
-  const handleFetchItem = async ({ id }: { id: number }) => {
-    setFetchLoading(true)
-    setFetchError(null)
-    try {
-      const item = await exampleApi.getItem(id)
-      setFetchedItem(item)
-      message.success('查询成功')
-    } catch (error) {
-      const text = resolveErrorMessage(error)
-      setFetchError(text)
-      setFetchedItem(null)
-      message.error(text)
-    } finally {
-      setFetchLoading(false)
+  const visibleEntries = useMemo(() => {
+    if (selectedSourceId === 'all') {
+      return entries
     }
-  }
+    return entries.filter((entry) => entry.source_id === selectedSourceId)
+  }, [entries, selectedSourceId])
 
-  const statisticValue = useMemo(() => {
-    if (pingResult) {
-      return '可用'
+  const activeSource = useMemo(() => {
+    if (selectedSourceId === 'all') {
+      return null
     }
-    if (pingError) {
-      return '异常'
-    }
-    return '待检测'
-  }, [pingError, pingResult])
+    return sources.find((source) => source.id === selectedSourceId) ?? null
+  }, [selectedSourceId, sources])
+
+  const filterOptions = useMemo(() => {
+    const base = sources.map((source) => ({
+      label: source.name,
+      value: source.id,
+    }))
+    return [{ label: '全部来源', value: 'all' as const }, ...base]
+  }, [sources])
 
   return (
     <Flex vertical gap={24}>
       <Card
-        title="服务健康监控"
+        title="订阅源管理"
         extra={
           <Button
             type="primary"
-            icon={<ThunderboltOutlined />}
-            loading={pingLoading}
-            onClick={handlePing}
+            icon={<ReloadOutlined />}
+            loading={refreshLoading}
+            onClick={handleRefresh}
+            disabled={sources.length === 0}
           >
-            {pingLoading ? '检测中' : '发起检测'}
+            刷新当前来源
           </Button>
         }
       >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Flex vertical gap={16}>
           <Typography.Paragraph type="secondary">
-            这里会调用后端的 ping 接口，确认服务是否正常运行，并同步展示最新状态。
+            选择订阅源后可以手动刷新，系统默认会按抓取频率自动同步。
           </Typography.Paragraph>
-          <Statistic
-            title="当前服务状态"
-            value={statisticValue}
-            valueStyle={{ color: statisticValue === '异常' ? '#dc2626' : '#1668dc' }}
-          />
-          {pingError && <Alert type="error" showIcon message={pingError} />}
-          {!pingError && pingResult && (
-            <Result
-              status="success"
-              title={pingResult}
-              subTitle="后端服务已成功响应请求。"
+          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+            <Select<SourceFilterValue>
+              style={{ width: 240 }}
+              options={filterOptions}
+              value={selectedSourceId}
+              onChange={(value) => setSelectedSourceId(value)}
+              placeholder="请选择订阅源"
             />
-          )}
-          {!pingError && !pingResult && (
-            <Alert type="info" showIcon message="尚未发起检测，请点击上方按钮。" />
-          )}
-        </Space>
+            {activeSource ? (
+              <Card type="inner" title={activeSource.name}>
+                <Space direction="vertical" size={8}>
+                  <Typography.Text>
+                    链接：<a href={activeSource.feed_url} target="_blank" rel="noreferrer">{activeSource.feed_url}</a>
+                  </Typography.Text>
+                  {activeSource.description && (
+                    <Typography.Paragraph>
+                      {activeSource.description}
+                    </Typography.Paragraph>
+                  )}
+                  <Space size={8} wrap>
+                    {activeSource.category && <Tag color="blue">{activeSource.category}</Tag>}
+                    {activeSource.language && <Tag color="green">{activeSource.language}</Tag>}
+                    {activeSource.is_active ? <Tag color="cyan">已启用</Tag> : <Tag color="default">已停用</Tag>}
+                  </Space>
+                </Space>
+              </Card>
+            ) : (
+              <Alert message="当前展示全部来源的合集。" type="info" showIcon />
+            )}
+          </Space>
+        </Flex>
       </Card>
 
-      <Card title="创建示例条目">
-        <Typography.Paragraph type="secondary">
-          填写名称后提交，将调用后端创建接口并返回新条目的详细信息。
-        </Typography.Paragraph>
-        <Form
-          form={createForm}
-          layout="vertical"
-          onFinish={handleCreateItem}
-          requiredMark={false}
-          className="mt-6"
-        >
-          <Form.Item
-            label="条目名称"
-            name="name"
-            rules={[
-              { required: true, message: '请输入条目名称' },
-              { min: 2, message: '名称至少需要 2 个字符' },
-            ]}
-          >
-            <Input size="large" placeholder="例如：现代化前端" allowClear />
-          </Form.Item>
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={createLoading}
-              icon={<PlusCircleOutlined />}
-            >
-              创建条目
-            </Button>
-          </Form.Item>
-        </Form>
-        {createError && <Alert type="error" showIcon message={createError} className="mt-4" />}
-        {createdItem && (
-          <Result
-            status="success"
-            title="创建成功"
-            extra={
-              <Descriptions column={1} bordered size="small">
-                <Descriptions.Item label="条目 ID">{createdItem.id}</Descriptions.Item>
-                <Descriptions.Item label="条目名称">{createdItem.name}</Descriptions.Item>
-              </Descriptions>
-            }
-          />
-        )}
-      </Card>
-
-      <Card title="查询示例条目">
-        <Typography.Paragraph type="secondary">
-          输入条目 ID 并提交，将带回后端的查询结果，便于快速验证数据。
-        </Typography.Paragraph>
-        <Form
-          form={fetchForm}
-          layout="vertical"
-          onFinish={handleFetchItem}
-          requiredMark={false}
-          className="mt-6"
-        >
-          <Form.Item
-            label="条目 ID"
-            name="id"
-            rules={[
-              { required: true, message: '请输入条目 ID' },
-              {
-                type: 'number',
-                min: 1,
-                transform: (value) => (value ?? undefined),
-                message: '请输入大于 0 的整数',
-              },
-            ]}
-          >
-            <InputNumber
-              min={1}
-              size="large"
-              style={{ width: '100%' }}
-              placeholder="请输入条目 ID"
+      <Card title="最新内容">
+        {error && <Alert type="error" showIcon message={error} className="mb-4" />}
+        <Spin spinning={loading} tip="正在加载订阅内容...">
+          {visibleEntries.length === 0 ? (
+            <Empty description="暂无可展示的条目" />
+          ) : (
+            <List
+              itemLayout="vertical"
+              dataSource={visibleEntries}
+              renderItem={(item) => (
+                <List.Item key={item.id}
+                  extra={item.feed_avatar ? <Avatar shape="square" size={64} src={item.feed_avatar} /> : undefined}
+                >
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Space align="center" size={12}>
+                      <Tag color="blue">{item.source_name}</Tag>
+                      <Typography.Text type="secondary">{formatDateTime(item.published_at)}</Typography.Text>
+                    </Space>
+                    <Typography.Title level={4} style={{ margin: 0 }}>
+                      {item.link ? (
+                        <a href={item.link} target="_blank" rel="noreferrer">
+                          {item.title}
+                        </a>
+                      ) : (
+                        item.title
+                      )}
+                    </Typography.Title>
+                    {item.author && (
+                      <Typography.Text type="secondary">作者：{item.author}</Typography.Text>
+                    )}
+                    {item.summary && (
+                      <Typography.Paragraph>
+                        <span dangerouslySetInnerHTML={{ __html: item.summary }} />
+                      </Typography.Paragraph>
+                    )}
+                  </Space>
+                </List.Item>
+              )}
             />
-          </Form.Item>
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={fetchLoading}
-              icon={<SearchOutlined />}
-            >
-              查询条目
-            </Button>
-          </Form.Item>
-        </Form>
-        {fetchError && <Alert type="error" showIcon message={fetchError} className="mt-4" />}
-        {fetchedItem && (
-          <Card
-            type="inner"
-            title="查询结果"
-            className="mt-4"
-          >
-            <Descriptions column={1} size="small" labelStyle={{ width: 96 }}>
-              <Descriptions.Item label="条目 ID">{fetchedItem.id}</Descriptions.Item>
-              <Descriptions.Item label="条目名称">{fetchedItem.name}</Descriptions.Item>
-            </Descriptions>
-          </Card>
-        )}
+          )}
+        </Spin>
       </Card>
     </Flex>
   )

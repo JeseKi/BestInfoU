@@ -26,7 +26,7 @@ export default function MainLayout() {
 
   const selectedKeys = useMemo(() => {
     if (location.pathname.startsWith('/')) {
-      return ['dashboard']
+      return ['feed']
     }
     return []
   }, [location.pathname])
@@ -34,8 +34,8 @@ export default function MainLayout() {
   const navItems = useMemo<MenuProps['items']>(
     () => [
       {
-        key: 'dashboard',
-        label: <Link to="/">示例模块</Link>,
+        key: 'feed',
+        label: <Link to="/">订阅资讯</Link>,
       },
     ],
     [],
@@ -92,7 +92,7 @@ export default function MainLayout() {
       >
         <Flex align="center" gap={16}>
           <Link to="/" className="text-base font-semibold text-slate-900">
-            Fullstack Template
+            BestInfoU
           </Link>
           <Menu
             mode="horizontal"

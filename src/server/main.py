@@ -22,6 +22,7 @@ from src.server.database import get_database_info, init_database
 # 路由模块
 from src.server.auth.router import router as auth_router
 from src.server.example_module.router import router as example_router
+from src.server.rss.router import router as rss_router
 
 # --- 配置与常量 ---
 PROJECT_ROOT = Path(global_config.project_root)
@@ -107,6 +108,7 @@ def health():
 
 app.include_router(auth_router)
 app.include_router(example_router)
+app.include_router(rss_router)
 
 
 # --- 前端 SPA 静态文件服务 ---
