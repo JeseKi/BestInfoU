@@ -24,11 +24,12 @@ from sqlalchemy.orm import Session
 from ..dao import RSSSourceDAO
 from ..models import RSSSource
 from ..schemas import RSSSourceSchema
+from ..config import rss_config
 
-DEFAULT_FEED_URL = "https://s.baoyu.io/feed.xml"
-DEFAULT_SOURCE_NAME = "宝玉 RSS"
-DEFAULT_SOURCE_AVATAR = "https://baoyu.io/favicon.ico"
-DEFAULT_SOURCE_HOMEPAGE = "https://baoyu.io/"
+DEFAULT_FEED_URL = rss_config.rss_default_feed_url
+DEFAULT_SOURCE_NAME = rss_config.rss_default_source_name
+DEFAULT_SOURCE_AVATAR = rss_config.rss_default_source_avatar
+DEFAULT_SOURCE_HOMEPAGE = rss_config.rss_default_source_homepage
 
 
 def ensure_default_source(db: Session) -> RSSSource:
@@ -57,7 +58,7 @@ def ensure_default_source(db: Session) -> RSSSource:
         category="technology",
         language="zh-CN",
         is_active=True,
-        sync_interval_minutes=60,
+        sync_interval_minutes=rss_config.rss_default_sync_interval_minutes,
     )
     _ensure_source_avatar(db, source)
     if not source.feed_avatar and DEFAULT_SOURCE_AVATAR:

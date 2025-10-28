@@ -32,8 +32,9 @@ from ..schemas import (
     RSSSourceSchema,
     SourceRefreshResponse,
 )
+from ..config import rss_config
 
-HTTP_TIMEOUT = 20.0
+HTTP_TIMEOUT = rss_config.rss_http_timeout
 
 
 class RSSFetchError(RuntimeError):

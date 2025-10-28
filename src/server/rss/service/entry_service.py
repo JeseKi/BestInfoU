@@ -22,8 +22,9 @@ from sqlalchemy.orm import Session
 from ..dao import RSSSourceDAO, RSSEntryDAO
 from ..models import RSSSource, RSSEntry
 from ..schemas import RSSFeedResponse, RSSSourceSchema
+from ..config import rss_config
 
-DEFAULT_ENTRY_LIMIT = 50
+DEFAULT_ENTRY_LIMIT = rss_config.rss_default_entry_limit
 
 
 def get_feed_snapshot(db: Session, limit: int = DEFAULT_ENTRY_LIMIT) -> RSSFeedResponse:

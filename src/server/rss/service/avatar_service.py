@@ -27,9 +27,10 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from ..models import RSSSource
+from ..config import rss_config
 
-HTTP_TIMEOUT = 20.0
-DEFAULT_SOURCE_AVATAR = "https://baoyu.io/favicon.ico"
+HTTP_TIMEOUT = rss_config.rss_http_timeout
+DEFAULT_SOURCE_AVATAR = rss_config.rss_default_source_avatar
 
 
 def _ensure_source_avatar(db: Session, source: RSSSource) -> None:
