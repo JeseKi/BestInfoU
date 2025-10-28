@@ -19,6 +19,11 @@ RSS 服务
 - `_materialize_entry`
 - `_materialize_entries`
 - `_to_entry_schema`
+- `_ensure_source_avatar`
+- `_update_source_avatar`
+- `_fetch_site_avatar`
+- `_rel_contains`
+- `_normalize_candidate_url`
 
 文件功能：
 - 聚合 RSS 模块的业务逻辑：确保默认订阅源存在、抓取并解析 RSS 内容、写入条目、产出 API 所需的数据模型。
@@ -30,11 +35,13 @@ import hashlib
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Iterable, List
+from urllib.parse import urljoin
 
 import httpx
-import feedparser # type: ignore
+import feedparser  # type: ignore
+from bs4 import BeautifulSoup  # type: ignore
 try:  # feedparser 部分版本将工具函数暴露在 util 下
-    from feedparser.util import mktime_tz as feedparser_mktime_tz # type: ignore
+    from feedparser.util import mktime_tz as feedparser_mktime_tz  # type: ignore
 except Exception:  # pragma: no cover - 仅在少数版本缺失时触发
     feedparser_mktime_tz = None
 from fastapi import HTTPException, status
@@ -53,7 +60,8 @@ from .schemas import (
 
 DEFAULT_FEED_URL = "https://s.baoyu.io/feed.xml"
 DEFAULT_SOURCE_NAME = "宝玉 RSS"
-DEFAULT_SOURCE_AVATAR = "https://s.baoyu.io/avatar.png"
+DEFAULT_SOURCE_AVATAR = "https://baoyu.io/favicon.ico"
+DEFAULT_SOURCE_HOMEPAGE = "https://baoyu.io/"
 HTTP_TIMEOUT = 20.0
 DEFAULT_ENTRY_LIMIT = 50
 
@@ -67,13 +75,20 @@ def ensure_default_source(db: Session) -> RSSSource:
     source_dao = RSSSourceDAO(db)
     existing = source_dao.get_by_feed_url(DEFAULT_FEED_URL)
     if existing:
+        if not existing.feed_avatar or existing.feed_avatar == DEFAULT_SOURCE_AVATAR:
+            _ensure_source_avatar(db, existing)
+            if (
+                (not existing.feed_avatar or existing.feed_avatar == DEFAULT_SOURCE_AVATAR)
+                and DEFAULT_SOURCE_AVATAR
+            ):
+                _update_source_avatar(db, existing, DEFAULT_SOURCE_AVATAR)
         return existing
     logger.info("未找到默认订阅源，正在自动创建。")
-    return source_dao.create_source(
+    source = source_dao.create_source(
         name=DEFAULT_SOURCE_NAME,
         feed_url=DEFAULT_FEED_URL,
-        homepage_url="https://s.baoyu.io/",
-        feed_avatar=DEFAULT_SOURCE_AVATAR,
+        homepage_url=DEFAULT_SOURCE_HOMEPAGE,
+        feed_avatar=None,
         description="宝玉精选的优质中文内容。"
         "默认订阅源用于 MVP，后续可在后台管理页面维护。",
         category="technology",
@@ -81,6 +96,10 @@ def ensure_default_source(db: Session) -> RSSSource:
         is_active=True,
         sync_interval_minutes=60,
     )
+    _ensure_source_avatar(db, source)
+    if not source.feed_avatar and DEFAULT_SOURCE_AVATAR:
+        _update_source_avatar(db, source, DEFAULT_SOURCE_AVATAR)
+    return source
 
 
 def list_sources(db: Session) -> List[RSSSourceSchema]:
@@ -137,6 +156,8 @@ def refresh_source(db: Session, source_id: int) -> SourceRefreshResponse:
         materialized = _materialize_entries(db, source, parsed_entries)
         entries_created = entry_dao.bulk_insert(materialized)
         source_dao.update_last_synced(source.id, datetime.now(timezone.utc))
+        if not source.feed_avatar or source.feed_avatar == DEFAULT_SOURCE_AVATAR:
+            _ensure_source_avatar(db, source)
         logger.info(
             "订阅源刷新成功：source_id={}, 新增条目={}",
             source.id,
@@ -354,3 +375,105 @@ def _to_entry_schema(entry: RSSEntry) -> RSSEntrySchema:
         published_at=_normalize_datetime_utc(entry.published_at),
         fetched_at=_normalize_datetime_utc(entry.fetched_at) or datetime.now(timezone.utc),
     )
+
+
+def _ensure_source_avatar(db: Session, source: RSSSource) -> None:
+    """为订阅源补齐头像（仅在缺失或仍为默认占位时触发）。"""
+    if source.feed_avatar and source.feed_avatar != DEFAULT_SOURCE_AVATAR:
+        return
+    homepage_url = source.homepage_url
+    if not homepage_url:
+        return
+    try:
+        avatar_url = _fetch_site_avatar(homepage_url)
+    except Exception as exc:  # pragma: no cover - 网络异常
+        logger.warning("解析站点头像失败：source_id=%s, error=%s", source.id, exc)
+        return
+    if not avatar_url:
+        return
+    _update_source_avatar(db, source, avatar_url)
+
+
+def _update_source_avatar(db: Session, source: RSSSource, avatar_url: str) -> None:
+    """将头像地址写回数据库。"""
+    if not avatar_url:
+        return
+    if source.feed_avatar == avatar_url:
+        return
+    try:
+        source.feed_avatar = avatar_url
+        source.updated_at = datetime.now(timezone.utc)
+        db.add(source)
+        db.commit()
+        db.refresh(source)
+        logger.info("订阅源头像已更新：source_id=%s", source.id)
+    except Exception as exc:  # pragma: no cover - 极端数据库错误
+        db.rollback()
+        logger.warning("订阅源头像写入失败：source_id=%s, error=%s", source.id, exc)
+
+
+def _fetch_site_avatar(website_url: str) -> str | None:
+    """尝试从站点主页解析 favicon / og:image 作为头像。"""
+    try:
+        response = httpx.get(
+            website_url,
+            timeout=HTTP_TIMEOUT,
+            follow_redirects=True,
+            headers={"User-Agent": "BestInfoU/0.1"},
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        logger.warning("站点头像请求失败：url=%s, error=%s", website_url, exc)
+        return None
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    base_url = str(response.url)
+
+    rel_priority = [
+        "apple-touch-icon",
+        "apple-touch-icon-precomposed",
+        "mask-icon",
+        "shortcut icon",
+        "icon",
+    ]
+
+    for rel_keyword in rel_priority:
+        link = soup.find("link", rel=lambda value: _rel_contains(value, rel_keyword))
+        href = link.get("href") if link else None
+        if href:
+            normalized = _normalize_candidate_url(base_url, href) # type: ignore
+            if normalized:
+                return normalized
+
+    for attr in ("property", "name"):
+        for key in ("og:image", "twitter:image"):
+            meta = soup.find("meta", attrs={attr: key})
+            content = meta.get("content") if meta else None
+            if content:
+                normalized = _normalize_candidate_url(base_url, content) # type: ignore
+                if normalized:
+                    return normalized
+
+    return None
+
+
+def _rel_contains(value: object, keyword: str) -> bool:
+    """判断 rel 属性是否包含指定关键字。"""
+    if not value:
+        return False
+    keyword_lower = keyword.lower()
+    if isinstance(value, (list, tuple, set)):
+        return any(keyword_lower in str(item).lower() for item in value)
+    raw = str(value).lower()
+    return keyword_lower in raw
+
+
+def _normalize_candidate_url(base: str, candidate: str) -> str | None:
+    """将相对路径归一化为绝对地址。"""
+    if not candidate:
+        return None
+    candidate = candidate.strip()
+    if not candidate:
+        return None
+    normalized = urljoin(base, candidate)
+    return normalized or None

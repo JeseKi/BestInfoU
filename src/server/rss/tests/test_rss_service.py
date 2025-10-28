@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 from src.server.rss import service
 from src.server.rss.models import RSSEntry, FetchLog, RSSSource
 
+AVATAR_URL = "https://example.com/static/avatar.png"
+
 
 SAMPLE_FEED = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -48,10 +50,12 @@ def _setup_default_source(db: Session) -> RSSSource:
     return db.query(RSSSource).filter(RSSSource.feed_url == service.DEFAULT_FEED_URL).one()
 
 
-def test_list_sources_contains_default(test_db_session: Session) -> None:
+def test_list_sources_contains_default(monkeypatch: pytest.MonkeyPatch, test_db_session: Session) -> None:
     """列出订阅源时应包含默认来源。"""
+    monkeypatch.setattr(service, "_fetch_site_avatar", lambda _: AVATAR_URL)
     sources = service.list_sources(test_db_session)
     assert any(source.feed_url == service.DEFAULT_FEED_URL for source in sources)
+    assert any(source.feed_avatar == AVATAR_URL or source.feed_avatar == service.DEFAULT_SOURCE_AVATAR for source in sources)
 
 
 def test_refresh_source_success_inserts_entries(monkeypatch: pytest.MonkeyPatch, test_db_session: Session) -> None:
@@ -60,6 +64,7 @@ def test_refresh_source_success_inserts_entries(monkeypatch: pytest.MonkeyPatch,
     def fake_fetch(_: str) -> str:
         return SAMPLE_FEED
 
+    monkeypatch.setattr(service, "_fetch_site_avatar", lambda _: AVATAR_URL)
     monkeypatch.setattr(service, "_fetch_feed_content", fake_fetch)
 
     source = _setup_default_source(test_db_session)
@@ -69,6 +74,7 @@ def test_refresh_source_success_inserts_entries(monkeypatch: pytest.MonkeyPatch,
     assert result.fetch_log.status == "success"
     assert result.fetch_log.entries_fetched == 2
     assert result.source.id == source.id
+    assert result.source.feed_avatar in {AVATAR_URL, service.DEFAULT_SOURCE_AVATAR}
 
     entries = test_db_session.query(RSSEntry).filter(RSSEntry.source_id == source.id).all()
     assert len(entries) == 2
@@ -76,6 +82,7 @@ def test_refresh_source_success_inserts_entries(monkeypatch: pytest.MonkeyPatch,
     first = next(entry for entry in entries if entry.guid == "post-1")
     assert first.title == "第一篇文章"
     assert first.author == "alice@example.com"
+    assert first.source.feed_avatar in {AVATAR_URL, service.DEFAULT_SOURCE_AVATAR}
     first_published = first.published_at
     if first_published:
         if first_published.tzinfo is None:
@@ -93,6 +100,7 @@ def test_refresh_source_is_idempotent(monkeypatch: pytest.MonkeyPatch, test_db_s
     def fake_fetch(_: str) -> str:
         return SAMPLE_FEED
 
+    monkeypatch.setattr(service, "_fetch_site_avatar", lambda _: AVATAR_URL)
     monkeypatch.setattr(service, "_fetch_feed_content", fake_fetch)
 
     source = _setup_default_source(test_db_session)
@@ -116,6 +124,7 @@ def test_refresh_source_records_error(monkeypatch: pytest.MonkeyPatch, test_db_s
     def fake_fetch(_: str) -> str:
         raise DummyError("模拟抓取失败")
 
+    monkeypatch.setattr(service, "_fetch_site_avatar", lambda _: AVATAR_URL)
     monkeypatch.setattr(service, "_fetch_feed_content", fake_fetch)
 
     source = _setup_default_source(test_db_session)
