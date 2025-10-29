@@ -2,10 +2,10 @@
 """
 RSS DAO
 
-公开接口：
-- `RSSSourceDAO`
-- `RSSEntryDAO`
-- `FetchLogDAO`
+- 公开接口：
+    - `RSSSourceDAO`
+    - `RSSEntryDAO`
+    - `FetchLogDAO`
 
 内部方法：
 - `_normalize_is_active`
@@ -26,9 +26,9 @@ from src.server.dao.dao_base import BaseDAO
 from .models import RSSSource, RSSEntry, FetchLog
 
 
-def _normalize_is_active(value: bool | int) -> int:
-    """确保布尔值写入 SQLite 时使用 0/1。"""
-    return 1 if bool(value) else 0
+def _normalize_is_active(value: bool | int) -> bool:
+    """标准化启用状态为布尔值。"""
+    return bool(value)
 
 
 class RSSSourceDAO(BaseDAO):
@@ -41,7 +41,7 @@ class RSSSourceDAO(BaseDAO):
     def list_active(self) -> List[RSSSource]:
         stmt = (
             select(RSSSource)
-            .where(RSSSource.is_active == 1)
+            .where(RSSSource.is_active.is_(True))
             .order_by(RSSSource.id.asc())
         )
         return list(self.db_session.scalars(stmt))
@@ -52,6 +52,10 @@ class RSSSourceDAO(BaseDAO):
 
     def get_by_feed_url(self, feed_url: str) -> RSSSource | None:
         stmt = select(RSSSource).where(RSSSource.feed_url == feed_url)
+        return self.db_session.scalars(stmt).first()
+
+    def get_by_name(self, name: str) -> RSSSource | None:
+        stmt = select(RSSSource).where(RSSSource.name == name)
         return self.db_session.scalars(stmt).first()
 
     def create_source(
@@ -80,6 +84,45 @@ class RSSSourceDAO(BaseDAO):
         self.db_session.commit()
         self.db_session.refresh(source)
         return source
+
+    def update_source(
+        self,
+        source: RSSSource,
+        *,
+        name: str | None = None,
+        feed_url: str | None = None,
+        homepage_url: str | None = None,
+        feed_avatar: str | None = None,
+        description: str | None = None,
+        language: str | None = None,
+        category: str | None = None,
+        is_active: bool | None = None,
+    ) -> RSSSource:
+        if name is not None:
+            source.name = name
+        if feed_url is not None:
+            source.feed_url = feed_url
+        if homepage_url is not None:
+            source.homepage_url = homepage_url
+        if feed_avatar is not None:
+            source.feed_avatar = feed_avatar
+        if description is not None:
+            source.description = description
+        if language is not None:
+            source.language = language
+        if category is not None:
+            source.category = category
+        if is_active is not None:
+            source.is_active = bool(is_active)
+
+        self.db_session.add(source)
+        self.db_session.commit()
+        self.db_session.refresh(source)
+        return source
+
+    def delete_source(self, source: RSSSource) -> None:
+        self.db_session.delete(source)
+        self.db_session.commit()
 
     def update_last_synced(self, source_id: int, timestamp: datetime) -> None:
         stmt = (

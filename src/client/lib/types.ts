@@ -94,3 +94,25 @@ export interface SourceRefreshResponse {
   source: RSSSource
   fetch_log: FetchLog
 }
+
+export interface CreateSourcePayload {
+  name: string
+  feed_url: string
+  homepage_url?: string | null
+  feed_avatar?: string | null
+  description?: string | null
+  language?: string | null
+  category?: string | null
+  is_active?: boolean
+}
+
+export interface UpdateSourcePayload {
+  name?: string
+  feed_url?: string
+  homepage_url?: string | null
+  feed_avatar?: string | null
+  description?: string | null
+  language?: string | null
+  category?: string | null
+  is_active?: boolean
+}

@@ -24,21 +24,38 @@ export default function MainLayout() {
   const { token } = theme.useToken()
   const { user, logout } = useAuth()
 
+  const isAdminRoute = useMemo(
+    () => location.pathname.startsWith('/admin'),
+    [location.pathname],
+  )
+
   const selectedKeys = useMemo(() => {
-    if (location.pathname.startsWith('/')) {
+    if (isAdminRoute) {
+      return ['admin']
+    }
+    if (location.pathname === '/' || location.pathname.startsWith('/')) {
       return ['feed']
     }
     return []
-  }, [location.pathname])
+  }, [isAdminRoute, location.pathname])
 
   const navItems = useMemo<MenuProps['items']>(
-    () => [
-      {
-        key: 'feed',
-        label: <Link to="/">订阅资讯</Link>,
-      },
-    ],
-    [],
+    () => {
+      const items: MenuProps['items'] = [
+        {
+          key: 'feed',
+          label: <Link to="/">订阅资讯</Link>,
+        },
+      ]
+      if (user?.role === 'admin') {
+        items.push({
+          key: 'admin',
+          label: <Link to="/admin">控制台</Link>,
+        })
+      }
+      return items
+    },
+    [user?.role],
   )
 
   const handleLogout = () => {
@@ -120,7 +137,7 @@ export default function MainLayout() {
         <div
           style={{
             margin: '0 auto',
-            maxWidth: 1120,
+            maxWidth: isAdminRoute ? '100%' : 1120,
             width: '100%',
           }}
         >

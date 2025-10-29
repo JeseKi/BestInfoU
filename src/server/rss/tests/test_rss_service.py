@@ -6,17 +6,30 @@ RSS 服务层测试
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from fastapi import HTTPException
 
+from pydantic import HttpUrl
+from pydantic_core import Url
 import pytest
 from sqlalchemy.orm import Session
 
-from src.server.rss.service import list_sources, refresh_source
+from src.server.rss.service import (
+    list_sources,
+    refresh_source,
+    create_source,
+    update_source,
+    delete_source,
+)
 from src.server.rss.service.fetch_service import RSSFetchError
 from src.server.rss.service.source_service import (
     DEFAULT_FEED_URL,
     DEFAULT_SOURCE_AVATAR,
 )
 from src.server.rss.models import RSSEntry, FetchLog, RSSSource
+from src.server.rss.schemas import (
+    CreateRSSSourcePayload,
+    UpdateRSSSourcePayload,
+)
 
 AVATAR_URL = "https://example.com/static/avatar.png"
 
@@ -172,3 +185,140 @@ def test_refresh_source_records_error(
     logs = test_db_session.query(FetchLog).filter(FetchLog.source_id == source.id).all()
     assert len(logs) == 1
     assert logs[0].status == "error"
+
+
+def _create_sample_source(
+    db: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    name: str = "示例订阅源",
+    feed_url: HttpUrl = Url("https://example.com/feed.xml"),
+) -> RSSSource:
+    """创建测试用订阅源。"""
+    monkeypatch.setattr(
+        "src.server.rss.service.avatar_service._fetch_site_avatar", lambda _: AVATAR_URL
+    )
+    payload = CreateRSSSourcePayload(
+        name=name,
+        feed_url=feed_url,
+        homepage_url=Url("https://example.com"),
+        description="用于测试的订阅源",
+        category="technology",
+        language="zh-CN",
+        is_active=True,
+    )
+    created = create_source(db, payload)
+    return db.query(RSSSource).filter(RSSSource.id == created.id).one()
+
+
+def test_create_source_success(
+    monkeypatch: pytest.MonkeyPatch,
+    test_db_session: Session,
+) -> None:
+    """能够成功创建新的订阅源。"""
+    source = _create_sample_source(test_db_session, monkeypatch)
+    assert source.name == "示例订阅源"
+    assert source.feed_url == "https://example.com/feed.xml"
+    assert source.is_active is True
+
+
+def test_create_source_duplicate_feed_url(
+    monkeypatch: pytest.MonkeyPatch,
+    test_db_session: Session,
+) -> None:
+    """重复的订阅链接应触发冲突错误。"""
+    _create_sample_source(test_db_session, monkeypatch)
+    with pytest.raises(HTTPException) as excinfo:
+        create_source(
+            test_db_session,
+            CreateRSSSourcePayload(
+                name="重复链接",
+                feed_url=Url("https://example.com/feed.xml"),
+            ),
+        )
+    assert excinfo.value.status_code == 400
+
+
+def test_update_source_partial_fields_and_toggle_status(
+    monkeypatch: pytest.MonkeyPatch,
+    test_db_session: Session,
+) -> None:
+    """部分字段更新与启停切换后应正确落库。"""
+    source = _create_sample_source(test_db_session, monkeypatch)
+
+    updated = update_source(
+        test_db_session,
+        source.id,
+        UpdateRSSSourcePayload(
+            name="更新后的名称",
+            category="news",
+            is_active=False,
+        ),
+    )
+    assert updated.name == "更新后的名称"
+    assert updated.category == "news"
+    assert updated.is_active is False
+
+    refreshed = test_db_session.query(RSSSource).filter(RSSSource.id == source.id).one()
+    assert refreshed.name == "更新后的名称"
+    assert refreshed.is_active is False
+
+
+def test_delete_source_success(
+    monkeypatch: pytest.MonkeyPatch,
+    test_db_session: Session,
+) -> None:
+    """删除非默认订阅源成功后应从数据库移除。"""
+    source = _create_sample_source(
+        test_db_session,
+        monkeypatch,
+        name="可删除的订阅源",
+        feed_url=Url("https://example.com/delete-me.xml"),
+    )
+    delete_source(test_db_session, source.id)
+    exists = (
+        test_db_session.query(RSSSource)
+        .filter(RSSSource.feed_url == "https://example.com/delete-me.xml")
+        .first()
+    )
+    assert exists is None
+
+
+def test_delete_source_protect_default(
+    test_db_session: Session,
+) -> None:
+    """默认订阅源不允许被删除。"""
+    default = _setup_default_source(test_db_session)
+    with pytest.raises(HTTPException) as excinfo:
+        delete_source(test_db_session, default.id)
+    assert excinfo.value.status_code == 400
+
+
+def test_refresh_source_not_found(
+    test_db_session: Session,
+) -> None:
+    """刷新不存在的订阅源应返回 404。"""
+    with pytest.raises(HTTPException) as excinfo:
+        refresh_source(test_db_session, 999999)
+    assert excinfo.value.status_code == 404
+
+
+def test_refresh_source_inactive(
+    monkeypatch: pytest.MonkeyPatch,
+    test_db_session: Session,
+) -> None:
+    """刷新已停用的订阅源应返回 400。"""
+    source = _create_sample_source(
+        test_db_session,
+        monkeypatch,
+        name="停用刷新校验",
+        feed_url=Url("https://example.com/inactive.xml"),
+    )
+    update_source(
+        test_db_session,
+        source.id,
+        UpdateRSSSourcePayload(is_active=False),
+    )
+    with pytest.raises(HTTPException) as excinfo:
+        refresh_source(test_db_session, source.id)
+    assert excinfo.value.status_code == 400

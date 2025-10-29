@@ -30,6 +30,7 @@ from sqlalchemy import (
     Text,
     ForeignKey,
     UniqueConstraint,
+    Boolean,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +39,7 @@ from src.server.database import Base
 
 class RSSSource(Base):
     __tablename__ = "rss_sources"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
@@ -47,7 +49,7 @@ class RSSSource(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, default=None)
     language: Mapped[Optional[str]] = mapped_column(String(32), default=None)
     category: Mapped[Optional[str]] = mapped_column(String(64), default=None)
-    is_active: Mapped[bool] = mapped_column(Integer, nullable=False, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_synced_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), default=None
     )
@@ -80,6 +82,7 @@ class RSSEntry(Base):
     __table_args__ = (
         UniqueConstraint("guid", name="uq_rss_entries_guid"),
         UniqueConstraint("hash_signature", name="uq_rss_entries_hash_signature"),
+        {"extend_existing": True},
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -109,6 +112,7 @@ class RSSEntry(Base):
 
 class FetchLog(Base):
     __tablename__ = "rss_fetch_logs"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     source_id: Mapped[int] = mapped_column(
