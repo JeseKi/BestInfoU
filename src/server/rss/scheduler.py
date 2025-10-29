@@ -106,7 +106,11 @@ class RSSScheduler:
 
         for source in active_sources:
             # 如果从未同步过或者上次同步时间超过了配置的间隔，则需要刷新
-            if not source.last_synced_at or source.last_synced_at < time_threshold:
+            # 处理可能存在的 offset-naive datetime（假设为 UTC）
+            last_synced = source.last_synced_at
+            if last_synced and last_synced.tzinfo is None:
+                last_synced = last_synced.replace(tzinfo=timezone.utc)
+            if not last_synced or last_synced < time_threshold:
                 sources_to_refresh.append(source.id)
 
         return sources_to_refresh
