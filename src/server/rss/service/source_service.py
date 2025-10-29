@@ -42,34 +42,22 @@ DEFAULT_SOURCE_HOMEPAGE = rss_config.rss_default_source_homepage
 
 def ensure_default_source(db: Session) -> RSSSource:
     """确保默认订阅源存在。"""
-    from .avatar_service import _ensure_source_avatar, _update_source_avatar
-
     source_dao = RSSSourceDAO(db)
     existing = source_dao.get_by_feed_url(DEFAULT_FEED_URL)
     if existing:
-        if not existing.feed_avatar or existing.feed_avatar == DEFAULT_SOURCE_AVATAR:
-            _ensure_source_avatar(db, existing)
-            if (
-                not existing.feed_avatar
-                or existing.feed_avatar == DEFAULT_SOURCE_AVATAR
-            ) and DEFAULT_SOURCE_AVATAR:
-                _update_source_avatar(db, existing, DEFAULT_SOURCE_AVATAR)
         return existing
     logger.info("未找到默认订阅源，正在自动创建。")
     source = source_dao.create_source(
         name=DEFAULT_SOURCE_NAME,
         feed_url=DEFAULT_FEED_URL,
         homepage_url=DEFAULT_SOURCE_HOMEPAGE,
-        feed_avatar=None,
+        feed_avatar=DEFAULT_SOURCE_AVATAR,
         description="宝玉精选的优质中文内容。"
         "默认订阅源用于 MVP，后续可在后台管理页面维护。",
         category="technology",
         language="zh-CN",
         is_active=True,
     )
-    _ensure_source_avatar(db, source)
-    if not source.feed_avatar and DEFAULT_SOURCE_AVATAR:
-        _update_source_avatar(db, source, DEFAULT_SOURCE_AVATAR)
     return source
 
 
@@ -85,7 +73,6 @@ def create_source(
     payload: CreateRSSSourcePayload,
 ) -> RSSSourceSchema:
     """创建新的订阅源。"""
-    from .avatar_service import _ensure_source_avatar
 
     ensure_default_source(db)
     source_dao = RSSSourceDAO(db)
@@ -115,8 +102,6 @@ def create_source(
         category=payload.category,
         is_active=payload.is_active,
     )
-    if not source.feed_avatar:
-        _ensure_source_avatar(db, source)
 
     return RSSSourceSchema.model_validate(source)
 
@@ -127,7 +112,6 @@ def update_source(
     payload: UpdateRSSSourcePayload,
 ) -> RSSSourceSchema:
     """更新订阅源配置。"""
-    from .avatar_service import _ensure_source_avatar
 
     ensure_default_source(db)
     source_dao = RSSSourceDAO(db)
@@ -169,10 +153,6 @@ def update_source(
         category=payload.category,
         is_active=payload.is_active,
     )
-
-    # 若启用或更新后缺少头像，尝试自动补全
-    if not updated.feed_avatar:
-        _ensure_source_avatar(db, updated)
 
     return RSSSourceSchema.model_validate(updated)
 

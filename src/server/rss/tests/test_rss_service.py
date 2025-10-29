@@ -31,8 +31,6 @@ from src.server.rss.schemas import (
     UpdateRSSSourcePayload,
 )
 
-AVATAR_URL = "https://example.com/static/avatar.png"
-
 
 SAMPLE_FEED = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -68,19 +66,11 @@ def _setup_default_source(db: Session) -> RSSSource:
     return db.query(RSSSource).filter(RSSSource.feed_url == DEFAULT_FEED_URL).one()
 
 
-def test_list_sources_contains_default(
-    monkeypatch: pytest.MonkeyPatch, test_db_session: Session
-) -> None:
+def test_list_sources_contains_default(test_db_session: Session) -> None:
     """列出订阅源时应包含默认来源。"""
-    monkeypatch.setattr(
-        "src.server.rss.service.avatar_service._fetch_site_avatar", lambda _: AVATAR_URL
-    )
     sources = list_sources(test_db_session)
     assert any(source.feed_url == DEFAULT_FEED_URL for source in sources)
-    assert any(
-        source.feed_avatar == AVATAR_URL or source.feed_avatar == DEFAULT_SOURCE_AVATAR
-        for source in sources
-    )
+    assert any(source.feed_avatar == DEFAULT_SOURCE_AVATAR for source in sources)
 
 
 def test_refresh_source_success_inserts_entries(
@@ -92,9 +82,6 @@ def test_refresh_source_success_inserts_entries(
         return SAMPLE_FEED
 
     monkeypatch.setattr(
-        "src.server.rss.service.avatar_service._fetch_site_avatar", lambda _: AVATAR_URL
-    )
-    monkeypatch.setattr(
         "src.server.rss.service.fetch_service._fetch_feed_content", fake_fetch
     )
 
@@ -105,7 +92,7 @@ def test_refresh_source_success_inserts_entries(
     assert result.fetch_log.status == "success"
     assert result.fetch_log.entries_fetched == 2
     assert result.source.id == source.id
-    assert result.source.feed_avatar in {AVATAR_URL, DEFAULT_SOURCE_AVATAR}
+    assert result.source.feed_avatar == DEFAULT_SOURCE_AVATAR
 
     entries = (
         test_db_session.query(RSSEntry).filter(RSSEntry.source_id == source.id).all()
@@ -115,7 +102,7 @@ def test_refresh_source_success_inserts_entries(
     first = next(entry for entry in entries if entry.guid == "post-1")
     assert first.title == "第一篇文章"
     assert first.author == "alice@example.com"
-    assert first.source.feed_avatar in {AVATAR_URL, DEFAULT_SOURCE_AVATAR}
+    assert first.source.feed_avatar == DEFAULT_SOURCE_AVATAR
     first_published = first.published_at
     if first_published:
         if first_published.tzinfo is None:
@@ -135,9 +122,6 @@ def test_refresh_source_is_idempotent(
     def fake_fetch(_: str) -> str:
         return SAMPLE_FEED
 
-    monkeypatch.setattr(
-        "src.server.rss.service.avatar_service._fetch_site_avatar", lambda _: AVATAR_URL
-    )
     monkeypatch.setattr(
         "src.server.rss.service.fetch_service._fetch_feed_content", fake_fetch
     )
@@ -168,9 +152,6 @@ def test_refresh_source_records_error(
         raise DummyError("模拟抓取失败")
 
     monkeypatch.setattr(
-        "src.server.rss.service.avatar_service._fetch_site_avatar", lambda _: AVATAR_URL
-    )
-    monkeypatch.setattr(
         "src.server.rss.service.fetch_service._fetch_feed_content", fake_fetch
     )
 
@@ -189,15 +170,11 @@ def test_refresh_source_records_error(
 
 def _create_sample_source(
     db: Session,
-    monkeypatch: pytest.MonkeyPatch,
     *,
     name: str = "示例订阅源",
     feed_url: HttpUrl = Url("https://example.com/feed.xml"),
 ) -> RSSSource:
     """创建测试用订阅源。"""
-    monkeypatch.setattr(
-        "src.server.rss.service.avatar_service._fetch_site_avatar", lambda _: AVATAR_URL
-    )
     payload = CreateRSSSourcePayload(
         name=name,
         feed_url=feed_url,
@@ -212,22 +189,20 @@ def _create_sample_source(
 
 
 def test_create_source_success(
-    monkeypatch: pytest.MonkeyPatch,
     test_db_session: Session,
 ) -> None:
     """能够成功创建新的订阅源。"""
-    source = _create_sample_source(test_db_session, monkeypatch)
+    source = _create_sample_source(test_db_session)
     assert source.name == "示例订阅源"
     assert source.feed_url == "https://example.com/feed.xml"
     assert source.is_active is True
 
 
 def test_create_source_duplicate_feed_url(
-    monkeypatch: pytest.MonkeyPatch,
     test_db_session: Session,
 ) -> None:
     """重复的订阅链接应触发冲突错误。"""
-    _create_sample_source(test_db_session, monkeypatch)
+    _create_sample_source(test_db_session)
     with pytest.raises(HTTPException) as excinfo:
         create_source(
             test_db_session,
@@ -240,11 +215,10 @@ def test_create_source_duplicate_feed_url(
 
 
 def test_update_source_partial_fields_and_toggle_status(
-    monkeypatch: pytest.MonkeyPatch,
     test_db_session: Session,
 ) -> None:
     """部分字段更新与启停切换后应正确落库。"""
-    source = _create_sample_source(test_db_session, monkeypatch)
+    source = _create_sample_source(test_db_session)
 
     updated = update_source(
         test_db_session,
@@ -265,13 +239,11 @@ def test_update_source_partial_fields_and_toggle_status(
 
 
 def test_delete_source_success(
-    monkeypatch: pytest.MonkeyPatch,
     test_db_session: Session,
 ) -> None:
     """删除非默认订阅源成功后应从数据库移除。"""
     source = _create_sample_source(
         test_db_session,
-        monkeypatch,
         name="可删除的订阅源",
         feed_url=Url("https://example.com/delete-me.xml"),
     )
@@ -304,13 +276,11 @@ def test_refresh_source_not_found(
 
 
 def test_refresh_source_inactive(
-    monkeypatch: pytest.MonkeyPatch,
     test_db_session: Session,
 ) -> None:
     """刷新已停用的订阅源应返回 400。"""
     source = _create_sample_source(
         test_db_session,
-        monkeypatch,
         name="停用刷新校验",
         feed_url=Url("https://example.com/inactive.xml"),
     )

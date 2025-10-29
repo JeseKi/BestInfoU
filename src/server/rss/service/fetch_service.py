@@ -75,14 +75,6 @@ def refresh_source(db: Session, source_id: int) -> SourceRefreshResponse:
         materialized = _materialize_entries(db, source, parsed_entries)
         entries_created = entry_dao.bulk_insert(materialized)
         source_dao.update_last_synced(source.id, datetime.now(timezone.utc))
-        # 从 avatar_service 导入
-        from .avatar_service import _ensure_source_avatar
-
-        if (
-            not source.feed_avatar
-            or source.feed_avatar == "https://baoyu.io/favicon.ico"
-        ):
-            _ensure_source_avatar(db, source)
         logger.info(
             "订阅源刷新成功：source_id={}, 新增条目={}",
             source.id,
